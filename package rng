@@ -1,4 +1,4 @@
-local Library = loadstring(game:HttpGet(("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wizard")))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wizard"))()
 local Window = Library:NewWindow("Credits: TGMANKASKE")
 local Section = Window:NewSection("Script")
 
@@ -6,15 +6,16 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local localPlayer = Players.LocalPlayer
 
--- Busca remotes recursivamente
+-- Buscar todos RemoteEvents/RemoteFunctions
 local function getAllRemotes(container)
     local remotes = {}
     for _, child in ipairs(container:GetChildren()) do
         if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-            remotes[#remotes+1] = child
+            table.insert(remotes, child)
         elseif #child:GetChildren() > 0 then
-            for _, r in ipairs(getAllRemotes(child)) do
-                remotes[#remotes+1] = r
+            local nested = getAllRemotes(child)
+            for _, r in ipairs(nested) do
+                table.insert(remotes, r)
             end
         end
     end
@@ -25,63 +26,90 @@ local allRemotes = getAllRemotes(ReplicatedStorage)
 
 local GivePackageRemote, GivePackageToPlayer, SellAllItemsRemote
 
-local function containsIgnoreCase(s, sub)
-    return string.find(string.lower(s), string.lower(sub)) ~= nil
+local function containsIgnoreCase(str, substr)
+    return string.find(string.lower(str), string.lower(substr)) ~= nil
 end
 
 for _, remote in ipairs(allRemotes) do
-    local n = remote.Name
-    if containsIgnoreCase(n, "GivePackageRemote") then
+    local name = remote.Name
+    if containsIgnoreCase(name, "GivePackageRemote") then
         GivePackageRemote = remote
-    elseif containsIgnoreCase(n, "GivePackageToPlayer") then
+    elseif containsIgnoreCase(name, "GivePackageToPlayer") then
         GivePackageToPlayer = remote
-    elseif containsIgnoreCase(n, "SellAllItems") then
+    elseif containsIgnoreCase(name, "SellAllItems") then
         SellAllItemsRemote = remote
     end
 end
 
-if not SellAllItemsRemote then
-    warn("SellAllItems Remote não encontrado")
+-- Pega nomes de todas as packages diretamente no ReplicatedStorage
+local function getPackageNames()
+    local names = {}
+    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+        if string.find(obj.Name, "Package") then
+            table.insert(names, obj.Name)
+        end
+    end
+    return names
 end
 
-local farm_active = false
-
--- Função de venda única e otimizada
-local function fireSellAll()
-    if not SellAllItemsRemote then return end
-    if typeof(SellAllItemsRemote.FireServer) == "function" then
-        SellAllItemsRemote:FireServer()
-    elseif typeof(SellAllItemsRemote.InvokeServer) == "function" then
-        SellAllItemsRemote:InvokeServer()
+-- Funções principais
+local function fireGivePackageRemote(packageName)
+    if GivePackageRemote and typeof(GivePackageRemote.FireServer) == "function" then
+        task.spawn(function()
+            GivePackageRemote:FireServer(packageName)
+        end)
     end
 end
 
--- Toggle farm rápido sem atrasos
+local function fireGivePackageToPlayer(player, packageName)
+    if GivePackageToPlayer and typeof(GivePackageToPlayer.FireServer) == "function" then
+        task.spawn(function()
+            GivePackageToPlayer:FireServer(player, packageName)
+        end)
+    end
+end
+
+local function fireSellAllItems()
+    if SellAllItemsRemote and typeof(SellAllItemsRemote.FireServer) == "function" then
+        SellAllItemsRemote:FireServer()
+    end
+end
+
+-- Toggle Farm Packages (sem delay)
+local farm_active = false
 Section:CreateToggle("Farm Packages (FAST)", function(state)
     farm_active = state
     if farm_active then
         task.spawn(function()
             while farm_active do
-                -- Farm packages...
-                if GivePackageToPlayer and typeof(GivePackageToPlayer.FireServer) == "function" then
-                    local pkgNames = {}
-                    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
-                        if containsIgnoreCase(obj.Name, "Package") then
-                            pkgNames[#pkgNames+1] = obj.Name
-                        end
-                    end
-                    for _, name in ipairs(pkgNames) do
-                        GivePackageToPlayer:FireServer(localPlayer, name)
-                    end
+                local packages = getPackageNames()
+                for _, name in ipairs(packages) do
+                    fireGivePackageRemote(name)
+                    fireGivePackageToPlayer(localPlayer, name)
                 end
-                task.wait()
+                task.wait() -- mínimo delay para estabilidade
             end
         end)
     end
 end)
 
--- Botão para vender todos os itens manualmente (1x por clique)
+-- Toggle Auto Rebirth
+local AutoRebirthEnabled = false
+Section:CreateToggle("Auto Rebirth", function(state)
+    AutoRebirthEnabled = state
+    if AutoRebirthEnabled then
+        task.spawn(function()
+            local rebirthEvent = ReplicatedStorage:WaitForChild("RebirthEvent")
+            while AutoRebirthEnabled do
+                rebirthEvent:FireServer()
+                task.wait(2)
+            end
+        end)
+    end
+end)
+
+-- Botão de vender todos os itens
 Section:CreateButton("Sell All Items", function()
-    fireSellAll()
-    print("Sell All Items executado")
+    fireSellAllItems()
+    print("Sell All Items disparado!")
 end)
