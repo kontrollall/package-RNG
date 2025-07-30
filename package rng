@@ -1,152 +1,87 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-local Window = Rayfield:CreateWindow({
-    Name = "TGMANKASKE Hub",
-    LoadingTitle = "TGMANKASKE",
-    LoadingSubtitle = "Script Hub",
-    ConfigurationSaving = { Enabled = false },
-    Discord = { Enabled = false },
-    KeySystem = false,
-})
-
-local Tab = Window:CreateTab("Main", 4483362458)
-local Section = Tab:CreateSection("Scripts")
+local Library = loadstring(game:HttpGet(("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wizard")))()
+local Window = Library:NewWindow("Credits: TGMANKASKE")
+local Section = Window:NewSection("Script")
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local localPlayer = Players.LocalPlayer
 
--- Função recursiva para buscar todos os remotes (Event e Function)
+-- Busca remotes recursivamente
 local function getAllRemotes(container)
     local remotes = {}
     for _, child in ipairs(container:GetChildren()) do
         if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-            table.insert(remotes, child)
+            remotes[#remotes+1] = child
         elseif #child:GetChildren() > 0 then
             for _, r in ipairs(getAllRemotes(child)) do
-                table.insert(remotes, r)
+                remotes[#remotes+1] = r
             end
         end
     end
     return remotes
 end
 
--- Encontra remote que contenha a keyword (case insensitive)
-local function findRemote(remotes, keyword)
-    for _, remote in ipairs(remotes) do
-        if remote.Name:lower():find(keyword:lower()) then
-            return remote
-        end
-    end
-    return nil
-end
-
 local allRemotes = getAllRemotes(ReplicatedStorage)
-local GivePackageRemote = findRemote(allRemotes, "GivePackageRemote")
-local GivePackageToPlayer = findRemote(allRemotes, "GivePackageToPlayer")
-local SellAllItemsRemote = findRemote(allRemotes, "SellAllItems")
-local RebirthEvent = findRemote(allRemotes, "RebirthEvent")
 
--- Debug para confirmar remotes encontrados
-print("GivePackageRemote:", GivePackageRemote and GivePackageRemote:GetFullName() or "Não encontrado")
-print("GivePackageToPlayer:", GivePackageToPlayer and GivePackageToPlayer:GetFullName() or "Não encontrado")
-print("SellAllItemsRemote:", SellAllItemsRemote and SellAllItemsRemote:GetFullName() or "Não encontrado")
-print("RebirthEvent:", RebirthEvent and RebirthEvent:GetFullName() or "Não encontrado")
+local GivePackageRemote, GivePackageToPlayer, SellAllItemsRemote
 
--- Pega nomes de packages em ReplicatedStorage
-local function getPackageNames()
-    local packages = {}
-    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
-        if obj.Name:find("Package") then
-            table.insert(packages, obj.Name)
-        end
-    end
-    return packages
+local function containsIgnoreCase(s, sub)
+    return string.find(string.lower(s), string.lower(sub)) ~= nil
 end
 
--- Função segura para chamar remotes
-local function safeFire(remote, ...)
-    if not remote then
-        warn("[safeFire] Remote inválido (nil)")
-        return
-    end
-    local success, err = pcall(function()
-        if remote:IsA("RemoteFunction") then
-            remote:InvokeServer(...)
-        elseif remote:IsA("RemoteEvent") then
-            remote:FireServer(...)
-        else
-            warn("[safeFire] Remote não é Event nem Function:", remote:GetFullName())
-        end
-    end)
-    if not success then
-        warn("[safeFire] Erro ao chamar remote:", err)
+for _, remote in ipairs(allRemotes) do
+    local n = remote.Name
+    if containsIgnoreCase(n, "GivePackageRemote") then
+        GivePackageRemote = remote
+    elseif containsIgnoreCase(n, "GivePackageToPlayer") then
+        GivePackageToPlayer = remote
+    elseif containsIgnoreCase(n, "SellAllItems") then
+        SellAllItemsRemote = remote
     end
 end
 
--- Farm Packages ultra rápido
+if not SellAllItemsRemote then
+    warn("SellAllItems Remote não encontrado")
+end
+
 local farm_active = false
-Section:CreateToggle({
-    Name = "Farm Packages (FAST)",
-    CurrentValue = false,
-    Flag = "FarmPackagesFast",
-    Callback = function(state)
-        farm_active = state
-        if farm_active then
-            task.spawn(function()
-                if not (GivePackageRemote or GivePackageToPlayer) then
-                    warn("[Farm] Remotes GivePackage não encontrados!")
-                    return
-                end
-                while farm_active do
-                    local packages = getPackageNames()
-                    for _, name in ipairs(packages) do
-                        safeFire(GivePackageRemote, name)
-                        safeFire(GivePackageToPlayer, localPlayer, name)
+
+-- Função de venda única e otimizada
+local function fireSellAll()
+    if not SellAllItemsRemote then return end
+    if typeof(SellAllItemsRemote.FireServer) == "function" then
+        SellAllItemsRemote:FireServer()
+    elseif typeof(SellAllItemsRemote.InvokeServer) == "function" then
+        SellAllItemsRemote:InvokeServer()
+    end
+end
+
+-- Toggle farm rápido sem atrasos
+Section:CreateToggle("Farm Packages (FAST)", function(state)
+    farm_active = state
+    if farm_active then
+        task.spawn(function()
+            while farm_active do
+                -- Farm packages...
+                if GivePackageToPlayer and typeof(GivePackageToPlayer.FireServer) == "function" then
+                    local pkgNames = {}
+                    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+                        if containsIgnoreCase(obj.Name, "Package") then
+                            pkgNames[#pkgNames+1] = obj.Name
+                        end
                     end
-                    task.wait() -- delay mínimo para estabilidade
+                    for _, name in ipairs(pkgNames) do
+                        GivePackageToPlayer:FireServer(localPlayer, name)
+                    end
                 end
-            end)
-        end
-    end,
-})
+                task.wait()
+            end
+        end)
+    end
+end)
 
--- Auto Rebirth
-local rebirth_active = false
-Section:CreateToggle({
-    Name = "Auto Rebirth",
-    CurrentValue = false,
-    Flag = "AutoRebirth",
-    Callback = function(state)
-        rebirth_active = state
-        if rebirth_active then
-            task.spawn(function()
-                if not RebirthEvent then
-                    warn("[AutoRebirth] RebirthEvent não encontrado!")
-                    return
-                end
-                while rebirth_active do
-                    safeFire(RebirthEvent)
-                    task.wait(2)
-                end
-            end)
-        end
-    end,
-})
-
--- Botão para vender todos os itens
-Section:CreateButton({
-    Name = "Sell All Items",
-    Callback = function()
-        if not SellAllItemsRemote then
-            warn("[Sell] SellAllItemsRemote não encontrado!")
-            return
-        end
-        safeFire(SellAllItemsRemote)
-        Rayfield:Notify({
-            Title = "Venda",
-            Content = "SellAllItems enviado com sucesso!",
-            Duration = 3.5,
-            Image = 4483362458
-        })
-    end,
-})
+-- Botão para vender todos os itens manualmente (1x por clique)
+Section:CreateButton("Sell All Items", function()
+    fireSellAll()
+    print("Sell All Items executado")
+end)
