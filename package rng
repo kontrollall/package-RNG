@@ -1,0 +1,92 @@
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wizard"))()
+local Window = Library:NewWindow("Credits: TGMANKASKE")
+local Section = Window:NewSection("Script")
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local localPlayer = Players.LocalPlayer
+
+local function getAllRemotes(container)
+    local remotes = {}
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+            table.insert(remotes, child)
+        elseif #child:GetChildren() > 0 then
+            for _, r in ipairs(getAllRemotes(child)) do
+                table.insert(remotes, r)
+            end
+        end
+    end
+    return remotes
+end
+
+local function findRemoteByName(remotes, keyword)
+    for _, remote in ipairs(remotes) do
+        if string.find(remote.Name:lower(), keyword:lower()) then
+            return remote
+        end
+    end
+end
+
+local allRemotes = getAllRemotes(ReplicatedStorage)
+
+local GivePackageRemote = findRemoteByName(allRemotes, "GivePackageRemote")
+local GivePackageToPlayer = findRemoteByName(allRemotes, "GivePackageToPlayer")
+local SellAllItemsRemote = findRemoteByName(allRemotes, "SellAllItems")
+
+local function getPackageNames()
+    local packages = {}
+    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+        if obj:IsA("Instance") and string.find(obj.Name, "Package") then
+            table.insert(packages, obj.Name)
+        end
+    end
+    return packages
+end
+
+local function safeFire(remote, ...)
+    if remote then
+        local success, err = pcall(function()
+            remote:FireServer(...)
+        end)
+        if not success then
+            warn("[RemoteError]:", err)
+        end
+    end
+end
+
+local farm_active = false
+Section:CreateToggle("Farm Packages (FAST)", function(state)
+    farm_active = state
+    if farm_active then
+        task.spawn(function()
+            while farm_active do
+                local packages = getPackageNames()
+                for _, name in ipairs(packages) do
+                    safeFire(GivePackageRemote, name)
+                    safeFire(GivePackageToPlayer, localPlayer, name)
+                end
+                task.wait() 
+            end
+        end)
+    end
+end)
+
+local AutoRebirthEnabled = false
+Section:CreateToggle("Auto Rebirth", function(state)
+    AutoRebirthEnabled = state
+    if AutoRebirthEnabled then
+        task.spawn(function()
+            local rebirthEvent = ReplicatedStorage:FindFirstChild("RebirthEvent")
+            while AutoRebirthEnabled and rebirthEvent do
+                safeFire(rebirthEvent)
+                task.wait(2)
+            end
+        end)
+    end
+end)
+
+Section:CreateButton("Sell All Items", function()
+    safeFire(SellAllItemsRemote)
+    print("Sell All Items enviado.")
+end)
