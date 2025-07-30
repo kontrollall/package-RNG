@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local localPlayer = Players.LocalPlayer
 
+-- 🔍 Buscar remotes recursivamente
 local function getAllRemotes(container)
     local remotes = {}
     for _, child in ipairs(container:GetChildren()) do
@@ -20,9 +21,10 @@ local function getAllRemotes(container)
     return remotes
 end
 
+-- 🔎 Encontrar remote por parte do nome com segurança
 local function findRemoteByName(remotes, keyword)
     for _, remote in ipairs(remotes) do
-        if string.find(remote.Name:lower(), keyword:lower()) then
+        if remote.Name:lower():find(keyword:lower()) then
             return remote
         end
     end
@@ -30,35 +32,51 @@ end
 
 local allRemotes = getAllRemotes(ReplicatedStorage)
 
-local GivePackageRemote = findRemoteByName(allRemotes, "GivePackageRemote")
-local GivePackageToPlayer = findRemoteByName(allRemotes, "GivePackageToPlayer")
-local SellAllItemsRemote = findRemoteByName(allRemotes, "SellAllItems")
+local GivePackageRemote       = findRemoteByName(allRemotes, "GivePackageRemote")
+local GivePackageToPlayer     = findRemoteByName(allRemotes, "GivePackageToPlayer")
+local SellAllItemsRemote      = findRemoteByName(allRemotes, "SellAllItems")
+local RebirthRemote           = findRemoteByName(allRemotes, "RebirthEvent")
 
+-- 📦 Pegar todas as packages pelo nome em ReplicatedStorage
 local function getPackageNames()
     local packages = {}
     for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
-        if obj:IsA("Instance") and string.find(obj.Name, "Package") then
+        if string.find(obj.Name, "Package") then
             table.insert(packages, obj.Name)
         end
     end
     return packages
 end
 
+-- 📤 Disparar remotes de forma segura
 local function safeFire(remote, ...)
-    if remote then
-        local success, err = pcall(function()
+    if not remote then
+        warn("[safeFire] remote nil")
+        return
+    end
+    local success, err = pcall(function()
+        if remote:IsA("RemoteFunction") then
+            remote:InvokeServer(...)
+        elseif remote:IsA("RemoteEvent") then
             remote:FireServer(...)
-        end)
-        if not success then
-            warn("[RemoteError]:", err)
+        else
+            error("Remote não é válido")
         end
+    end)
+    if not success then
+        warn("[RemoteError]:", err)
     end
 end
 
+-- 🚀 Farm Packages rápido e leve
 local farm_active = false
 Section:CreateToggle("Farm Packages (FAST)", function(state)
     farm_active = state
     if farm_active then
+        if not GivePackageRemote and not GivePackageToPlayer then
+            warn("Nenhum remote de Package encontrado!")
+            return
+        end
         task.spawn(function()
             while farm_active do
                 local packages = getPackageNames()
@@ -66,27 +84,32 @@ Section:CreateToggle("Farm Packages (FAST)", function(state)
                     safeFire(GivePackageRemote, name)
                     safeFire(GivePackageToPlayer, localPlayer, name)
                 end
-                task.wait() 
+                task.wait() -- mínimo delay para estabilidade
             end
         end)
     end
 end)
 
+-- 🔁 Rebirth Automático
 local AutoRebirthEnabled = false
 Section:CreateToggle("Auto Rebirth", function(state)
     AutoRebirthEnabled = state
     if AutoRebirthEnabled then
+        if not RebirthRemote then
+            warn("Remote de Rebirth não encontrado!")
+            return
+        end
         task.spawn(function()
-            local rebirthEvent = ReplicatedStorage:FindFirstChild("RebirthEvent")
-            while AutoRebirthEnabled and rebirthEvent do
-                safeFire(rebirthEvent)
+            while AutoRebirthEnabled do
+                safeFire(RebirthRemote)
                 task.wait(2)
             end
         end)
     end
 end)
 
+-- 🧼 Vender Itens Manualmente
 Section:CreateButton("Sell All Items", function()
     safeFire(SellAllItemsRemote)
-    print("Sell All Items enviado.")
+    print("Sell All Items disparado.")
 end)
